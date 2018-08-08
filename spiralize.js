@@ -394,7 +394,22 @@ makeCircle(
 
 docRef.selection.invert();
 docRef.selection.clear();
-/*
-docRef.selection.cut();
-pasteInPlace();
-*/
+
+//TRIM
+docRef.selection.deselect();
+docRef.trim(); // trim blank space
+
+docRef.resizeImage(docRef.width, null, docRef.width / 20); // resize to 20 inches; do not resample;
+docRef.resizeCanvas(UnitValue(24,"in"),UnitValue(24,"in"));
+
+//add white background
+var artworkLayer = docRef.activeLayer;
+var newLayer = docRef.artLayers.add();
+newLayer.move(artworkLayer, ElementPlacement.PLACEAFTER);
+var fillColor = new SolidColor();
+        fillColor.rgb.red = 255;
+        fillColor.rgb.green = 255;
+        fillColor.rgb.blue = 255;
+docRef.selection.selectAll();
+docRef.selection.fill(fillColor);
+docRef.selection.deselect();
