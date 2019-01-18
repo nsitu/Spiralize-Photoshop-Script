@@ -78,8 +78,14 @@ function layerFromBackground() {
  var startX = 0;
  var baseSegmentLength = docRef.height / 2;
  var SegmentLengthIncrement = docRef.height / 2.75;
+  // The SegmentLengthIncrement affects the space between spiral "rungs"
   // 3 gives a slight overlap.
   // 2.5 gives a slight gap
+  // TODO: create a UI for customizing this,
+  //  preferrably based on inputting the desired gap
+  // rather than asking the user for a SegmentLengthIncrement (which is rather obscure)
+  // TODO: make the increment based on a formula instead of a fixed linear value.
+
 
   var shapeRef = [ [0,0], [0,docRef.height], [baseSegmentLength,docRef.height], [baseSegmentLength,0] ];
   docRef.selection.select(shapeRef);
@@ -343,13 +349,34 @@ finalDocBounds[1] = finalDocBounds[1] - 100;
 finalDocBounds[2] = finalDocBounds[2] + 100;
 finalDocBounds[3] = finalDocBounds[3] + 100;
 
-
+// NOTE: the bounds are ordered as follows: left top right bottom
 var finalInnerCircleBounds = [0,0,0,0];
-// bounds order: left top right bottom
-finalInnerCircleBounds[0] = innerCircleBounds[0] - finalDocBounds[0] - pixelOffset;
-finalInnerCircleBounds[1] = innerCircleBounds[1] - finalDocBounds[1] - pixelOffset;
-finalInnerCircleBounds[2] = innerCircleBounds[2] - finalDocBounds[0] + pixelOffset;
-finalInnerCircleBounds[3] = innerCircleBounds[3] - finalDocBounds[1] + pixelOffset;
+
+// Here we calculate the counds of a circle used to subtract a core from the centre
+// we begin with innerCircleBounds, (already calculated during assembly)
+// innerCircleBounds defines a circle aligning with the outer edge of the 1st arc
+// we will expand this circle so as to partially contain surrounding spiral rungs.
+
+// We will expand the circle by a pixel amount defined in "furtherOffset"
+// ideally this corresponds more or less to the gap between the rungs.
+// the gap between the rungs is somehow contingent on SegmentLengthIncrement.
+// in a future iteration I might calculate this dynamically.
+
+// TODO as much as I like the currenteffect with its outer blunt edge
+//  you could also create a  a pretty nice donut / wreath.
+//  if you base the outer circle on the inner circle.
+// say, by expanding the radius to its breaking point
+// this is at least worth exploring / offering as an option
+// especially if you develop a UI to turn it on or off.
+
+
+
+var furtherOffset = 52;
+
+finalInnerCircleBounds[0] = innerCircleBounds[0] - finalDocBounds[0] - pixelOffset - furtherOffset;
+finalInnerCircleBounds[1] = innerCircleBounds[1] - finalDocBounds[1] - pixelOffset - furtherOffset;
+finalInnerCircleBounds[2] = innerCircleBounds[2] - finalDocBounds[0] + pixelOffset + furtherOffset;
+finalInnerCircleBounds[3] = innerCircleBounds[3] - finalDocBounds[1] + pixelOffset + furtherOffset;
 
 var finalOuterCircleBounds = [0,0,0,0];
 finalOuterCircleBounds[0] = outerCircleBounds[0] - finalDocBounds[0] - pixelOffset;
