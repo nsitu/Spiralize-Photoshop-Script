@@ -7,6 +7,11 @@ layerFromBackground();
 var docRef = app.activeDocument;      // document
 var largestSegmentLength = 0;
 var pixelOffset = 3;
+var growthMode = 'linear';  // linear growth gives you a more or less archimedean spiral.
+
+// exponential growth is also an option (more like a nautillus)
+//var growthMode = 'exponential';
+//var growthFactor = 1.5; // defines multiplier for exponential growth
 
 // we will calculate these later.
 var innerSegmentLength = 0;
@@ -23,68 +28,43 @@ var outerCircleBounds = [0,0,0,0];
 
 var finalDocBounds = [0,0,0,0];
 
-function MoveLayerTo(fLayer,fX,fY) {
-  var Position = fLayer.bounds;
-  Position[0] = fX - Position[0];
-  Position[1] = fY - Position[1];
-  fLayer.translate(-Position[0],-Position[1]);
-}
-
-
-function pasteInPlace(){
-  var idpast = charIDToTypeID( "past" );
-    var desc557 = new ActionDescriptor();
-    var idinPlace = stringIDToTypeID( "inPlace" );
-    desc557.putBoolean( idinPlace, true );
-    var idAntA = charIDToTypeID( "AntA" );
-    var idAnnt = charIDToTypeID( "Annt" );
-    var idAnno = charIDToTypeID( "Anno" );
-    desc557.putEnumerated( idAntA, idAnnt, idAnno );
-    executeAction( idpast, desc557, DialogModes.NO );
-}
-
-  function makeCircle(Left,Top,Right,Bottom,Feather) {
-  if(Feather == undefined) Feather = 0;
-  var desc3 = new ActionDescriptor();
-          var ref1 = new ActionReference();
-          ref1.putProperty( charIDToTypeID('Chnl'), charIDToTypeID('fsel') );
-      desc3.putReference( charIDToTypeID('null'), ref1 );
-          var desc4 = new ActionDescriptor();
-          desc4.putUnitDouble( charIDToTypeID('Top '), charIDToTypeID('#Pxl'), Top );
-          desc4.putUnitDouble( charIDToTypeID('Left'), charIDToTypeID('#Pxl'), Left );
-          desc4.putUnitDouble( charIDToTypeID('Btom'), charIDToTypeID('#Pxl'), Bottom );
-          desc4.putUnitDouble( charIDToTypeID('Rght'), charIDToTypeID('#Pxl'), Right );
-      desc3.putObject( charIDToTypeID('T   '), charIDToTypeID('Elps'), desc4 );
-      desc3.putUnitDouble( charIDToTypeID('Fthr'), charIDToTypeID('#Pxl'), Feather );
-      desc3.putBoolean( charIDToTypeID('AntA'), true );
-      executeAction( charIDToTypeID('setd'), desc3, DialogModes.NO );
-  };
-
-
-function layerFromBackground() {
-  var desc2 = new ActionDescriptor();
-  var ref2 = new ActionReference();
-  ref2.putProperty( charIDToTypeID('Lyr '), charIDToTypeID('Bckg') );
-  desc2.putReference( charIDToTypeID('null'), ref2 );
-  var desc3 = new ActionDescriptor();
-  desc3.putUnitDouble( charIDToTypeID('Opct'), charIDToTypeID('#Prc'), 100.000000 );
-  desc3.putEnumerated( charIDToTypeID('Md  '), charIDToTypeID('BlnM'), charIDToTypeID('Nrml') );
-  desc2.putObject( charIDToTypeID('T   '), charIDToTypeID('Lyr '), desc3 );
-  try{ executeAction( charIDToTypeID('setd'), desc2, DialogModes.NO ); }catch(e){}
-};
-
-
-
  var startX = 0;
- var baseSegmentLength = docRef.height / 2;
- var SegmentLengthIncrement = docRef.height / 2.75;
-  // The SegmentLengthIncrement affects the space between spiral "rungs"
-  // 3 gives a slight overlap.
-  // 2.5 gives a slight gap
-  // TODO: create a UI for customizing this,
-  //  preferrably based on inputting the desired gap
-  // rather than asking the user for a SegmentLengthIncrement (which is rather obscure)
-  // TODO: make the increment based on a formula instead of a fixed linear value.
+ var originalDocumentHeight = docRef.height;
+ var baseSegmentLength = docRef.height  ;
+
+  // Set Desired Pixel Gap
+  // NOTE; a negative gap value implies an overlap.
+  // var desiredPixelGap = 0;
+
+  // if you ever want to go beyond a basic prompt,
+  // see here for advice on building interfaces. https://forums.adobe.com/thread/2222913
+
+  var desiredPixelGap=prompt(
+    "Image dimensions: "+ docRef.height +" x "+ docRef.width +"\n"+
+    "Please specify a rung offset. \n"+
+    "NOTE: Positive values give a gap. Negative values, overlap. \n",
+    150,
+    "Spiralize"
+  );
+
+  // what are the upper and lower limits of this gap?
+  if (!parseInt(desiredPixelGap)){
+    alert(desiredPixelGap+' is not get a valid number. Defaulting to 100.');
+    desiredPixelGap = 100;
+  }
+
+  // I don't fully understand this math, but it works pretty well.
+  var growthIncrement = ( ( ( ( desiredPixelGap / docRef.height ) + 1.0029 ) / 2.8389 ) * docRef.height );
+
+  if (!Math.floor(growthIncrement) > 0 ){
+    alert('Growth Increment '+growthIncrement+" seems funky.");
+  }
+  // NOTE i'm using 1.0029 because of excel's calculated regression.
+  // I imagine however that the ratio is what counts here.
+  // TODO: see if you get similar results with 1 / 2.830690996111277
+
+  // I used to do this with a hard coded value without allowing for Gap customization:
+  // var growthIncrement = docRef.height * 0.3532706329916517;
 
 
   var shapeRef = [ [0,0], [0,docRef.height], [baseSegmentLength,docRef.height], [baseSegmentLength,0] ];
@@ -117,21 +97,29 @@ var refY = 0;
 var position = 'first'; // could also be 'top' 'right' 'bottom' or 'left'
 
 // if you have more than 50 segments, wow!
+var segmentWidths = []; // in exponential mode we need a place to track the widths
 
 for (segment = 0; segment<50; segment+=1)
 {
 
-
     docRef.activeLayer = backgroundLayerRef;  //activate the original layer
 
-    if (startX > docRef.width){
-      break;
+    if (startX > docRef.width){  break;  }
+
+    if (growthMode == 'exponential'){
+      if (segment == 0){ var segWidth = baseSegmentLength; }
+      else{ var segWidth = segmentWidths[segment-1]*growthFactor; }
+      segmentWidths[segment]=segWidth;
     }
-    var segWidth = (segment *  SegmentLengthIncrement ) +  baseSegmentLength;
+    else{
+      var segWidth = (segment *  growthIncrement ) +  baseSegmentLength;
+    }
+
     if (segWidth > largestSegmentLength){ largestSegmentLength = segWidth; }
     var endX = startX + segWidth;
     if (endX > docRef.width){
       endX = docRef.width;
+      //if we have overshot the edge of the image, don't make any new layers.
     }else{
       docRef.selection.select(Array (Array(startX, 0), Array(startX, docRef.height), Array(endX,docRef.height), Array(endX,0)), SelectionType.REPLACE, 0, false);
       docRef.selection.copy();        //copy the selection
@@ -139,12 +127,7 @@ for (segment = 0; segment<50; segment+=1)
       docRef.paste();
       MoveLayerTo(docRef.activeLayer,0,0);
     }
-
     startX +=segWidth;
-
-
-
-
 }
 
 backgroundLayerRef.remove();
@@ -167,76 +150,10 @@ var numLayers = docRef.artLayers.length;
    // to help calculate the a final outer circle crop.
    if (layer == 3){ outerArcPosition = position; }
 
+   // warp and rotate current layer
   docRef.activeLayer = docRef.artLayers[layer-1];
-
-  /*
-  if (docRef.activeLayer == backgroundLayerRef){
-    alert(docRef.activeLayer.name);
-  }
-  */
-    var idTrnf = charIDToTypeID( "Trnf" );
-        var desc11 = new ActionDescriptor();
-        var idnull = charIDToTypeID( "null" );
-            var ref3 = new ActionReference();
-            var idLyr = charIDToTypeID( "Lyr " );
-            var idOrdn = charIDToTypeID( "Ordn" );
-            var idTrgt = charIDToTypeID( "Trgt" );
-            ref3.putEnumerated( idLyr, idOrdn, idTrgt );
-        desc11.putReference( idnull, ref3 );
-        var idFTcs = charIDToTypeID( "FTcs" );
-        var idQCSt = charIDToTypeID( "QCSt" );
-        var idQcsa = charIDToTypeID( "Qcsa" );
-        desc11.putEnumerated( idFTcs, idQCSt, idQcsa );
-        var idOfst = charIDToTypeID( "Ofst" );
-            var desc12 = new ActionDescriptor();
-            var idHrzn = charIDToTypeID( "Hrzn" );
-            var idPxl = charIDToTypeID( "#Pxl" );
-            desc12.putUnitDouble( idHrzn, idPxl, 0.000000 );
-            var idVrtc = charIDToTypeID( "Vrtc" );
-            var idPxl = charIDToTypeID( "#Pxl" );
-            desc12.putUnitDouble( idVrtc, idPxl, -0.009065 );
-        var idOfst = charIDToTypeID( "Ofst" );
-        desc11.putObject( idOfst, idOfst, desc12 );
-        var idWdth = charIDToTypeID( "Wdth" );
-        var idPrc = charIDToTypeID( "#Prc" );
-        desc11.putUnitDouble( idWdth, idPrc, 100.002108 );
-        var idHght = charIDToTypeID( "Hght" );
-        var idPrc = charIDToTypeID( "#Prc" );
-        desc11.putUnitDouble( idHght, idPrc, 100.000545 );
-        var idwarp = stringIDToTypeID( "warp" );
-            var desc13 = new ActionDescriptor();
-            var idwarpStyle = stringIDToTypeID( "warpStyle" );
-            var idwarpStyle = stringIDToTypeID( "warpStyle" );
-            var idwarpArc = stringIDToTypeID( "warpArc" );
-            desc13.putEnumerated( idwarpStyle, idwarpStyle, idwarpArc );
-            var idwarpValue = stringIDToTypeID( "warpValue" );
-            desc13.putDouble( idwarpValue, 50.000000 );
-            var idwarpPerspective = stringIDToTypeID( "warpPerspective" );
-            desc13.putDouble( idwarpPerspective, 0.000000 );
-            var idwarpPerspectiveOther = stringIDToTypeID( "warpPerspectiveOther" );
-            desc13.putDouble( idwarpPerspectiveOther, 0.000000 );
-            var idwarpRotate = stringIDToTypeID( "warpRotate" );
-            var idOrnt = charIDToTypeID( "Ornt" );
-            var idHrzn = charIDToTypeID( "Hrzn" );
-            desc13.putEnumerated( idwarpRotate, idOrnt, idHrzn );
-            var iduOrder = stringIDToTypeID( "uOrder" );
-            desc13.putInteger( iduOrder, 4 );
-            var idvOrder = stringIDToTypeID( "vOrder" );
-            desc13.putInteger( idvOrder, 2 );
-        var idwarp = stringIDToTypeID( "warp" );
-        desc11.putObject( idwarp, idwarp, desc13 );
-        var idIntr = charIDToTypeID( "Intr" );
-        var idIntp = charIDToTypeID( "Intp" );
-        var idBcbc = charIDToTypeID( "Bcbc" );
-        desc11.putEnumerated( idIntr, idIntp, idBcbc );
-    executeAction( idTrnf, desc11, DialogModes.NO );
-    // =======================================================
-
-    //rotate current layer
-    docRef.activeLayer.rotate(90*segment);
-
-
-    // Math.PI
+  warpCurrentLayer();
+  docRef.activeLayer.rotate(90*segment);
 
     var triSide = docRef.height.value / Math.sqrt(2);
 
@@ -309,11 +226,7 @@ var numLayers = docRef.artLayers.length;
 
  }
 
-
-//alert(outerArcPosition+' '+outerArcBounds[0].value+', '+outerArcBounds[1].value+', '+outerArcBounds[2].value+', '+outerArcBounds[3].value);
-
-
-/* calculate outer curcle */
+/* calculate outer circle */
 if (outerArcPosition == 'top' || outerArcPosition == 'bottom'){
   outerSegmentLength = outerArcBounds[2].value - outerArcBounds[0].value;
 }else{
@@ -352,31 +265,25 @@ finalDocBounds[3] = finalDocBounds[3] + 100;
 // NOTE: the bounds are ordered as follows: left top right bottom
 var finalInnerCircleBounds = [0,0,0,0];
 
-// Here we calculate the counds of a circle used to subtract a core from the centre
+// Here we calculate the bounds of a circle used to subtract a core from the centre
 // we begin with innerCircleBounds, (already calculated during assembly)
 // innerCircleBounds defines a circle aligning with the outer edge of the 1st arc
-// we will expand this circle so as to partially contain surrounding spiral rungs.
+// we expand this circle so as to partially contain surrounding spiral rungs.
+// We expand the circle by the desiredPixelGap, already defined.
 
-// We will expand the circle by a pixel amount defined in "furtherOffset"
-// ideally this corresponds more or less to the gap between the rungs.
-// the gap between the rungs is somehow contingent on SegmentLengthIncrement.
-// in a future iteration I might calculate this dynamically.
-
-// TODO as much as I like the currenteffect with its outer blunt edge
-//  you could also create a  a pretty nice donut / wreath.
-//  if you base the outer circle on the inner circle.
-// say, by expanding the radius to its breaking point
+// TODO I do  like the currenteffect with its outer blunt edge
+// but you could also create a  a pretty nice balanced donut / wreath.
+// if you base the outer circle on the inner circle.
+// e.g. by expanding the circle to its breaking point.
+// it's of course an open question how to calculate that breaking point.
 // this is at least worth exploring / offering as an option
-// especially if you develop a UI to turn it on or off.
+// especially if you can develop a UI to turn it on or off.
 
-
-
-var furtherOffset = 52;
-
-finalInnerCircleBounds[0] = innerCircleBounds[0] - finalDocBounds[0] - pixelOffset - furtherOffset;
-finalInnerCircleBounds[1] = innerCircleBounds[1] - finalDocBounds[1] - pixelOffset - furtherOffset;
-finalInnerCircleBounds[2] = innerCircleBounds[2] - finalDocBounds[0] + pixelOffset + furtherOffset;
-finalInnerCircleBounds[3] = innerCircleBounds[3] - finalDocBounds[1] + pixelOffset + furtherOffset;
+// use the desiredPixelGap as an offset to calculate the selection circle for inner trimming.
+finalInnerCircleBounds[0] = Math.abs(innerCircleBounds[0] - finalDocBounds[0] - desiredPixelGap);
+finalInnerCircleBounds[1] = Math.abs(innerCircleBounds[1] - finalDocBounds[1] - desiredPixelGap);
+finalInnerCircleBounds[2] = innerCircleBounds[2] - finalDocBounds[0] + desiredPixelGap;
+finalInnerCircleBounds[3] = innerCircleBounds[3] - finalDocBounds[1] + desiredPixelGap;
 
 var finalOuterCircleBounds = [0,0,0,0];
 finalOuterCircleBounds[0] = outerCircleBounds[0] - finalDocBounds[0] - pixelOffset;
@@ -386,39 +293,24 @@ finalOuterCircleBounds[3] = outerCircleBounds[3] - finalDocBounds[1] + pixelOffs
 
  docRef.crop(finalDocBounds);
 
+ // Flatten layers together
+ try{  activeDocument.mergeVisibleLayers(); }catch(e){}
 
-
-
-// combine segments
- try{
-    activeDocument.mergeVisibleLayers();
-  }catch(e){}
-
-
-    //makeCircle(innerCircleBounds[0],innerCircleBounds[1],innerCircleBounds[2],innerCircleBounds[3],1);
-
-
-  //makeCircle(finalDocBounds[0],finalDocBounds[1],finalDocBounds[2],finalDocBounds[3],1);
-
-
+// TODO: the following is a kind of desctructive editing.
+// you could make a layer mask instead.
 makeCircle(
     finalInnerCircleBounds[0],
     finalInnerCircleBounds[1],
     finalInnerCircleBounds[2],
     finalInnerCircleBounds[3],
-    1);
-
-
+1);
 docRef.selection.clear();
-
-
 makeCircle(
     finalOuterCircleBounds[0],
     finalOuterCircleBounds[1],
     finalOuterCircleBounds[2],
     finalOuterCircleBounds[3],
-    1);
-
+1);
 docRef.selection.invert();
 docRef.selection.clear();
 
@@ -440,3 +332,115 @@ var fillColor = new SolidColor();
 docRef.selection.selectAll();
 docRef.selection.fill(fillColor);
 docRef.selection.deselect();
+
+
+//===========Functions=======================
+
+function warpCurrentLayer(){
+  var idTrnf = charIDToTypeID( "Trnf" );
+      var desc11 = new ActionDescriptor();
+      var idnull = charIDToTypeID( "null" );
+          var ref3 = new ActionReference();
+          var idLyr = charIDToTypeID( "Lyr " );
+          var idOrdn = charIDToTypeID( "Ordn" );
+          var idTrgt = charIDToTypeID( "Trgt" );
+          ref3.putEnumerated( idLyr, idOrdn, idTrgt );
+      desc11.putReference( idnull, ref3 );
+      var idFTcs = charIDToTypeID( "FTcs" );
+      var idQCSt = charIDToTypeID( "QCSt" );
+      var idQcsa = charIDToTypeID( "Qcsa" );
+      desc11.putEnumerated( idFTcs, idQCSt, idQcsa );
+      var idOfst = charIDToTypeID( "Ofst" );
+          var desc12 = new ActionDescriptor();
+          var idHrzn = charIDToTypeID( "Hrzn" );
+          var idPxl = charIDToTypeID( "#Pxl" );
+          desc12.putUnitDouble( idHrzn, idPxl, 0.000000 );
+          var idVrtc = charIDToTypeID( "Vrtc" );
+          var idPxl = charIDToTypeID( "#Pxl" );
+          desc12.putUnitDouble( idVrtc, idPxl, -0.009065 );
+      var idOfst = charIDToTypeID( "Ofst" );
+      desc11.putObject( idOfst, idOfst, desc12 );
+      var idWdth = charIDToTypeID( "Wdth" );
+      var idPrc = charIDToTypeID( "#Prc" );
+      desc11.putUnitDouble( idWdth, idPrc, 100.002108 );
+      var idHght = charIDToTypeID( "Hght" );
+      var idPrc = charIDToTypeID( "#Prc" );
+      desc11.putUnitDouble( idHght, idPrc, 100.000545 );
+      var idwarp = stringIDToTypeID( "warp" );
+          var desc13 = new ActionDescriptor();
+          var idwarpStyle = stringIDToTypeID( "warpStyle" );
+          var idwarpStyle = stringIDToTypeID( "warpStyle" );
+          var idwarpArc = stringIDToTypeID( "warpArc" );
+          desc13.putEnumerated( idwarpStyle, idwarpStyle, idwarpArc );
+          var idwarpValue = stringIDToTypeID( "warpValue" );
+          desc13.putDouble( idwarpValue, 50.000000 );
+          var idwarpPerspective = stringIDToTypeID( "warpPerspective" );
+          desc13.putDouble( idwarpPerspective, 0.000000 );
+          var idwarpPerspectiveOther = stringIDToTypeID( "warpPerspectiveOther" );
+          desc13.putDouble( idwarpPerspectiveOther, 0.000000 );
+          var idwarpRotate = stringIDToTypeID( "warpRotate" );
+          var idOrnt = charIDToTypeID( "Ornt" );
+          var idHrzn = charIDToTypeID( "Hrzn" );
+          desc13.putEnumerated( idwarpRotate, idOrnt, idHrzn );
+          var iduOrder = stringIDToTypeID( "uOrder" );
+          desc13.putInteger( iduOrder, 4 );
+          var idvOrder = stringIDToTypeID( "vOrder" );
+          desc13.putInteger( idvOrder, 2 );
+      var idwarp = stringIDToTypeID( "warp" );
+      desc11.putObject( idwarp, idwarp, desc13 );
+      var idIntr = charIDToTypeID( "Intr" );
+      var idIntp = charIDToTypeID( "Intp" );
+      var idBcbc = charIDToTypeID( "Bcbc" );
+      desc11.putEnumerated( idIntr, idIntp, idBcbc );
+  executeAction( idTrnf, desc11, DialogModes.NO );
+
+}
+function MoveLayerTo(fLayer,fX,fY) {
+  var Position = fLayer.bounds;
+  Position[0] = fX - Position[0];
+  Position[1] = fY - Position[1];
+  fLayer.translate(-Position[0],-Position[1]);
+}
+
+
+function pasteInPlace(){
+  var idpast = charIDToTypeID( "past" );
+    var desc557 = new ActionDescriptor();
+    var idinPlace = stringIDToTypeID( "inPlace" );
+    desc557.putBoolean( idinPlace, true );
+    var idAntA = charIDToTypeID( "AntA" );
+    var idAnnt = charIDToTypeID( "Annt" );
+    var idAnno = charIDToTypeID( "Anno" );
+    desc557.putEnumerated( idAntA, idAnnt, idAnno );
+    executeAction( idpast, desc557, DialogModes.NO );
+}
+
+  function makeCircle(Left,Top,Right,Bottom,Feather) {
+  if(Feather == undefined) Feather = 0;
+  var desc3 = new ActionDescriptor();
+          var ref1 = new ActionReference();
+          ref1.putProperty( charIDToTypeID('Chnl'), charIDToTypeID('fsel') );
+      desc3.putReference( charIDToTypeID('null'), ref1 );
+          var desc4 = new ActionDescriptor();
+          desc4.putUnitDouble( charIDToTypeID('Top '), charIDToTypeID('#Pxl'), Top );
+          desc4.putUnitDouble( charIDToTypeID('Left'), charIDToTypeID('#Pxl'), Left );
+          desc4.putUnitDouble( charIDToTypeID('Btom'), charIDToTypeID('#Pxl'), Bottom );
+          desc4.putUnitDouble( charIDToTypeID('Rght'), charIDToTypeID('#Pxl'), Right );
+      desc3.putObject( charIDToTypeID('T   '), charIDToTypeID('Elps'), desc4 );
+      desc3.putUnitDouble( charIDToTypeID('Fthr'), charIDToTypeID('#Pxl'), Feather );
+      desc3.putBoolean( charIDToTypeID('AntA'), true );
+      executeAction( charIDToTypeID('setd'), desc3, DialogModes.NO );
+  };
+
+
+function layerFromBackground() {
+  var desc2 = new ActionDescriptor();
+  var ref2 = new ActionReference();
+  ref2.putProperty( charIDToTypeID('Lyr '), charIDToTypeID('Bckg') );
+  desc2.putReference( charIDToTypeID('null'), ref2 );
+  var desc3 = new ActionDescriptor();
+  desc3.putUnitDouble( charIDToTypeID('Opct'), charIDToTypeID('#Prc'), 100.000000 );
+  desc3.putEnumerated( charIDToTypeID('Md  '), charIDToTypeID('BlnM'), charIDToTypeID('Nrml') );
+  desc2.putObject( charIDToTypeID('T   '), charIDToTypeID('Lyr '), desc3 );
+  try{ executeAction( charIDToTypeID('setd'), desc2, DialogModes.NO ); }catch(e){}
+};
