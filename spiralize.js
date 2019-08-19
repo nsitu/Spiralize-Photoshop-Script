@@ -5,6 +5,8 @@ app.preferences.rulerUnits = Units.PIXELS;
 layerFromBackground();
 
 var docRef = app.activeDocument;      // document
+
+
 var largestSegmentLength = 0;
 var pixelOffset = 3;
 var growthMode = 'linear';  // linear growth gives you a more or less archimedean spiral.
@@ -31,6 +33,7 @@ var finalDocBounds = [0,0,0,0];
  var startX = 0;
  var originalDocumentHeight = docRef.height;
  var baseSegmentLength = docRef.height  ;
+ var mirroredSegmentLength = 2 * docRef.height  ;
 
   // Set Desired Pixel Gap
   // NOTE; a negative gap value implies an overlap.
@@ -38,6 +41,8 @@ var finalDocBounds = [0,0,0,0];
 
   // if you ever want to go beyond a basic prompt,
   // see here for advice on building interfaces. https://forums.adobe.com/thread/2222913
+
+
 
   var desiredPixelGap=prompt(
     "Image dimensions: "+ docRef.height +" x "+ docRef.width +"\n"+
@@ -53,7 +58,7 @@ var finalDocBounds = [0,0,0,0];
     desiredPixelGap = 100;
   }
 
-  // I don't fully understand this math, but it works pretty well.
+  // I don't fully understand this math, but it works pretty well. I used excel to sample a bunch of options and did a linear regression.
   var growthIncrement = ( ( ( ( desiredPixelGap / docRef.height ) + 1.0029 ) / 2.8389 ) * docRef.height );
 
   if (!Math.floor(growthIncrement) > 0 ){
@@ -67,26 +72,72 @@ var finalDocBounds = [0,0,0,0];
   // var growthIncrement = docRef.height * 0.3532706329916517;
 
 
-  var shapeRef = [ [0,0], [0,docRef.height], [baseSegmentLength,docRef.height], [baseSegmentLength,0] ];
-  docRef.selection.select(shapeRef);
-  docRef.selection.copy();
-  pasteInPlace();
-  docRef.crop([-baseSegmentLength, 0, docRef.width, docRef.height]);
-  docRef.activeLayer.resize(-100);
-  docRef.activeLayer.translate(-baseSegmentLength);
+  // ======Mirrored Segment======
+  // to make a tapered centre in our spiral, we end up cropping a lot away.
+  // to compensate for this we begin the spiral with a mirrored segment
+  // this lengthens the panorama's start by mirroredSegmentLength pixels
+  // TODO: could we apply a similar approach at the end of the spiral?
 
-  try{
-     activeDocument.mergeVisibleLayers();
-   }catch(e){}
+  // Photoshop does not allow documents larger than 300000px.
+  // So, only do this if the result will fit within those bounds.
 
-   var backgroundLayerRef = docRef.activeLayer;    // layer
+  if (docRef.width + mirroredSegmentLength < 300000){
+    var shapeRef = [ [0,0], [0,docRef.height], [mirroredSegmentLength,docRef.height], [mirroredSegmentLength,0] ];
+    docRef.selection.select(shapeRef);
+    docRef.selection.copy();
+    pasteInPlace();
+    docRef.crop([-mirroredSegmentLength, 0, docRef.width, docRef.height]);
+    docRef.activeLayer.resize(-100);
+    docRef.activeLayer.translate(-mirroredSegmentLength);
+    try{ activeDocument.mergeVisibleLayers(); }catch(e){}
+  }
 
-/*
+  var backgroundLayerRef = docRef.activeLayer;    // layer
 
-  backgroundLayerRef.duplicate();
+  // at the end of the spiral there may well be wasted pixels.
+  // it's possible that we might easily add another segment
+  // by extending the panorama slightly
+  // via a little bit of stretch
+  // or via a mirrored segment.
+  // a stretch involves a  generally acceptable degrading of quality
+  // (we are stretching the image anyway via the warps.)
+  // a mirrored segment may also be fine,
+  //  though it may comes with the arbitrary aesthetic cost of unsightlyness
+  // (but sometimes the mirroring looks great)
+  // in any case we need to know how much to stretch the image by
+  // in order to arrive at the required threshold.
+  // you should map this out via some experiments
+  // that clarify the following relation:
+  // a spiral with x rungs requires an image with a proportion of 1:y
+  // #rungs   img proportion
+  // 1        1:1
+  // 2        1:3
+  // 3        1:6
+  // 4        1:10
+  // 5        1:15
+  // 6        1:21
+  // 7        1:28
+  // 8        1:36
+  // 9        1:45
+  // 10       1:55
+  // 11       1:66
+  // 12       1:78
+  // 13       1:91
+  // 14       1:105
 
+// Triangular numbers
+// this sequence has a name.
+// the sum of the first n positive integers is (n^2 + n) / 2
+// the nth triangular number tn is equal to
 
-*/
+//TODO: At the centre of the spiral, construct the pyramid
+// implicit in the triangle formed by stacking the segments
+//
+//           *
+//         *   *
+//       *   *   *
+//     *   *   *   *
+
 
 
 
